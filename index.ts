@@ -50,8 +50,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(500).json({ error: 'Internal server error', details: err.message });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 ROAN AI Server running on http://localhost:${PORT}`);
+// Listen on all network interfaces (0.0.0.0) for Render
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 ROAN AI Server running on port ${PORT}`);
   console.log(`📡 Local models available via Ollama`);
   console.log(`📁 Uploads directory: ${path.join(__dirname, '../uploads')}`);
   console.log(`🔐 Auth system enabled`);
