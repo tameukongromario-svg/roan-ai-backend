@@ -1,0 +1,12 @@
+{
+  "users": [
+    {
+      "id": "1771780365447",
+      "username": "Tameukong Romario",
+      "email": "romario@roan.ai",
+      "password": "$2b$10$8zfBiuUAiQqkyw1NoS6xmONwZPLLpxgCRc4v.ukvpiatq5278Ehae",
+      "role": "developer",
+      "createdAt": "2026-02-22T17:12:45.447Z"
+    }
+  ]
+}
