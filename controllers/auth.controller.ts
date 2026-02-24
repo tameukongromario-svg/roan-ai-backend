@@ -39,11 +39,13 @@ export class AuthController {
         return res.status(401).json({ error: result.message });
       }
 
-      // Set cookie
+      // Set cookie for production (Render) - FIXED
       res.cookie('token', result.token, {
         httpOnly: true,
+        secure: process.env.NODE_ENV === 'production', // true on Render (HTTPS)
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for cross-site
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        sameSite: 'strict'
+        path: '/' // Make cookie available to all routes
       });
 
       res.json({
@@ -58,7 +60,12 @@ export class AuthController {
   }
 
   async logout(req: Request, res: Response) {
-    res.clearCookie('token');
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      path: '/'
+    });
     res.json({ success: true, message: 'Logged out' });
   }
 
