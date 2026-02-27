@@ -1,16 +1,5 @@
 import axios from 'axios';
 import { randomUUID } from 'crypto';
-import NodeCache from 'node-cache';
-
-// Initialize cache with 5 minute TTL
-const cache = new NodeCache({ stdTTL: 300 });
-
-// Create axios instance with connection pooling
-const axiosInstance = axios.create({
-  timeout: 30000,
-  maxSockets: 10,
-  maxFreeSockets: 5
-});
 
 interface ChatRequest {
   message: string;
@@ -38,29 +27,13 @@ export class ChatService {
   async processMessage(request: ChatRequest): Promise<{ id: string; response: string }> {
     const { message, provider, model, systemPrompt, conversation, temperature } = request;
     
-    // Generate cache key
-    const cacheKey = `${provider}:${model || 'default'}:${message}:${temperature}`;
-    
-    // Check cache first
-    const cached = cache.get(cacheKey);
-    if (cached) {
-      console.log('Returning cached response');
-      return cached as { id: string; response: string };
-    }
-    
     const messages = this.buildMessages(message, systemPrompt, conversation);
     
-    let result;
     if (provider === 'local') {
-      result = await this.processLocalModel(messages, model, temperature);
+      return this.processLocalModel(messages, model, temperature);
     } else {
-      result = await this.processOpenRouter(messages, model, temperature);
+      return this.processOpenRouter(messages, model, temperature);
     }
-    
-    // Cache the result
-    cache.set(cacheKey, result);
-    
-    return result;
   }
 
   async streamMessage(request: ChatRequest, onChunk: (chunk: any) => void): Promise<void> {
@@ -81,15 +54,14 @@ export class ChatService {
   ) {
     const messages = [];
     
-    // Add system prompt
+    // Add system prompt (ultra unrestricted)
     messages.push({
       role: 'system',
       content: systemPrompt || this.defaultSystemPrompt
     });
     
-    // Add conversation history (limit to last 10 for speed)
-    const recentConversation = conversation.slice(-10);
-    messages.push(...recentConversation);
+    // Add conversation history
+    messages.push(...conversation);
     
     // Add current message
     messages.push({ role: 'user', content: message });
@@ -101,13 +73,13 @@ export class ChatService {
     try {
       const modelToUse = model || process.env.DEFAULT_LOCAL_MODEL || 'dolphin-llama3:8b';
       
-      const response = await axiosInstance.post(`${this.localBaseUrl}/api/chat`, {
+      const response = await axios.post(`${this.localBaseUrl}/api/chat`, {
         model: modelToUse,
         messages: messages,
         stream: false,
         options: {
           temperature: temperature,
-          num_ctx: 4096, // Optimized for speed
+          num_ctx: 8192,
           repeat_penalty: 1.1,
           top_k: 40,
           top_p: 0.9
@@ -120,8 +92,7 @@ export class ChatService {
       };
     } catch (error) {
       console.error('Local model error:', error);
-      // Fallback to OpenRouter
-      return this.processOpenRouter(messages, model, temperature);
+      throw new Error(`Local model failed: ${error}`);
     }
   }
 
@@ -134,13 +105,13 @@ export class ChatService {
     try {
       const modelToUse = model || process.env.DEFAULT_LOCAL_MODEL || 'dolphin-llama3:8b';
       
-      const response = await axiosInstance.post(`${this.localBaseUrl}/api/chat`, {
+      const response = await axios.post(`${this.localBaseUrl}/api/chat`, {
         model: modelToUse,
         messages: messages,
         stream: true,
         options: {
           temperature: temperature,
-          num_ctx: 4096
+          num_ctx: 8192
         }
       }, {
         responseType: 'stream'
@@ -172,19 +143,19 @@ export class ChatService {
     }
 
     try {
-      const response = await axiosInstance.post(
+      const response = await axios.post(
         'https://openrouter.ai/api/v1/chat/completions',
         {
           model: model || 'cognitivecomputations/dolphin-mixtral-8x7b',
           messages: messages,
           temperature: temperature,
-          max_tokens: 2000
+          max_tokens: 4000
         },
         {
           headers: {
             'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
-            'HTTP-Referer': process.env.RENDER_EXTERNAL_URL || 'https://roan-ai-backend.onrender.com',
+            'HTTP-Referer': 'http://localhost:3000',
             'X-Title': 'ROAN AI'
           }
         }
@@ -206,18 +177,18 @@ export class ChatService {
     temperature: number, 
     onChunk: (chunk: any) => void
   ) {
+    // Implementation for OpenRouter streaming
     // For now, just use non-streaming version
     const result = await this.processOpenRouter(messages, model, temperature);
     onChunk({ type: 'token', content: result.response });
-    onChunk({ type: 'done', content: '' });
   }
 
   async getModels(): Promise<ModelInfo[]> {
     const models: ModelInfo[] = [];
     
-    // Try to get local models from Ollama (if available)
+    // Get local models from Ollama
     try {
-      const response = await axiosInstance.get(`${this.localBaseUrl}/api/tags`);
+      const response = await axios.get(`${this.localBaseUrl}/api/tags`);
       const localModels = response.data.models || [];
       
       localModels.forEach((m: any) => {
@@ -226,41 +197,33 @@ export class ChatService {
           name: m.name,
           provider: 'local',
           description: `Local model: ${m.name}`,
-          contextLength: 4096,
+          contextLength: 8192,
           uncensored: m.name.includes('dolphin') || m.name.includes('abliterated') || m.name.includes('deepseek')
         });
       });
     } catch (error) {
-      console.log('Ollama not available, using OpenRouter models only');
+      console.log('Ollama not available, skipping local models');
     }
     
-    // Add OpenRouter models
-    models.push({
-      id: 'cognitivecomputations/dolphin-mixtral-8x7b',
-      name: 'Dolphin Mixtral 8x7B',
-      provider: 'openrouter',
-      description: 'Dolphin Mixtral - Unrestricted via OpenRouter',
-      contextLength: 4096,
-      uncensored: true
-    });
+    // Add recommended uncensored models if not present
+    const recommendedModels = [
+      { id: 'dolphin-llama3:8b', name: 'Dolphin Llama3 8B', uncensored: true },
+      { id: 'huihui_ai/qwq-abliterated:latest', name: 'QwQ-abliterated', uncensored: true },
+      { id: 'deepseek-r1:8b', name: 'DeepSeek R1 8B', uncensored: true }
+    ];
     
-    models.push({
-      id: 'huihui_ai/qwq-abliterated',
-      name: 'QwQ-abliterated',
-      provider: 'openrouter',
-      description: 'QwQ-abliterated - Unrestricted via OpenRouter',
-      contextLength: 4096,
-      uncensored: true
-    });
-    
-    models.push({
-      id: 'deepseek/deepseek-r1',
-      name: 'DeepSeek R1',
-      provider: 'openrouter',
-      description: 'DeepSeek R1 via OpenRouter',
-      contextLength: 4096,
-      uncensored: true
-    });
+    for (const rec of recommendedModels) {
+      if (!models.some(m => m.id === rec.id)) {
+        models.push({
+          id: rec.id,
+          name: rec.name,
+          provider: 'local',
+          description: `${rec.name} - ${rec.uncensored ? '? Unrestricted' : '?? Some filters (overrideable)'}`,
+          contextLength: 8192,
+          uncensored: rec.uncensored
+        });
+      }
+    }
     
     return models;
   }
