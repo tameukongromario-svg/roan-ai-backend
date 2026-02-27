@@ -1,15 +1,17 @@
 import axios from 'axios';
 import { randomUUID } from 'crypto';
 import NodeCache from 'node-cache';
+import http from 'http';
+import https from 'https';
 
 // Initialize cache with 5 minute TTL
 const cache = new NodeCache({ stdTTL: 300 });
 
-// Create axios instance with connection pooling
+// Create axios instance with connection pooling using proper agents
 const axiosInstance = axios.create({
   timeout: 30000,
-  maxSockets: 10,
-  maxFreeSockets: 5
+  httpAgent: new http.Agent({ keepAlive: true, maxSockets: 10, maxFreeSockets: 5 }),
+  httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 10, maxFreeSockets: 5 })
 });
 
 interface ChatRequest {
