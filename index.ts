@@ -18,7 +18,12 @@ app.set('trust proxy', 1);
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://roan-ai-frontend.vercel.app'],
+  origin: [
+    'http://localhost:3000', 
+    'http://127.0.0.1:3000', 
+    'https://roan-ai-frontend.vercel.app',
+    'https://roan-ai-frontend-7fkuw3oys-tameukongs-projects.vercel.app'  // ADDED YOUR FRONTEND URL
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
